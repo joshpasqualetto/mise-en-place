@@ -1,0 +1,43 @@
+%h1
+  Upload #{@ul.id}
+  by
+  %a(href="/?user=#{@ul.user}")= @ul.user
+  to
+  %a(href="/?branch=#{@ul.branch}")= @ul.branch
+  at
+  #{@ul.received_at.strftime('%d %b %X')}:
+  %a(href="#{@ul.github_link}")= @ul.short_hashes
+%nav
+  %a(href="/upload/#{@ul.id-1}") [ ← ]
+  %a(href="/") [ Home ]
+  %a(href="/upload/#{@ul.id+1}") [ → ]
+.upload
+  %p(class="status #{@ul.status}")
+    - if @ul.status == 'unapproved'
+      Unapproved
+    - elsif @ul.status == 'ready'
+      Ready...
+    - elsif @ul.status == 'processing'
+      %img(src="/loading.gif")
+      Processing...
+    - elsif @ul.status == 'done'
+      Done!
+    - elsif @ul.status == 'failed'
+      Failed
+    - else
+      Unknown
+  - if @ul.status == 'unapproved'
+    %form(method="POST" action="/upload/#{@ul.id}")
+      %p(class="action")
+        - if @ul.user != @user
+          %input(type="submit" name="action" value="Approve")
+        - else
+          You cannot approve your own upload.
+      %p(class="action")
+        %input(type="submit" name="action" value="Delete")
+  - else
+    %pre(class="log")
+      - if @log
+        = @log
+      - else
+        Awaiting log output ...

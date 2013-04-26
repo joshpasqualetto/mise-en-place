@@ -1,0 +1,54 @@
+#!/bin/sh
+
+# TODO: this should be configurable
+base_url="http://localhost:4567"
+
+refname="$1"
+oldrev="$2"
+newrev="$3"
+
+if [ -z "$GIT_DIR" ]; then
+    echo "Don't run this script from the command line." >&2
+    exit 1
+fi
+
+if [ -z "$refname" -o -z "$oldrev" -o -z "$newrev" ]; then
+    echo "Usage: $0 <ref> <oldrev> <newrev>" >&2
+    exit 1
+fi
+
+isrev() {
+    test "$1" != 0000000000000000000000000000000000000000
+}
+
+reqbranch() {
+    tempfile="$(mktemp)"
+    verb="$1"; shift
+    url="$base_url/branch/${refname#refs/heads/}"
+    auth="$USER:changeme"
+    status="$(curl -s -X "$verb" -u "$auth" -w '%{http_code}' -o "$tempfile" "$@" "$url")"
+    case "$status" in
+        200) ;;
+        *) echo "*** Web service returned $status, aborting update"; exit 1;;
+    esac
+    cat "$tempfile"
+    rm "$tempfile"
+}
+
+case "$refname" in
+    refs/heads/*)
+        if isrev "$newrev"; then
+	    if isrev "$oldrev"; then
+		reqbranch PUT -d "{\"prev\":\"$oldrev\",\"ref\":\"$newrev\"}"
+	    else
+		reqbranch PUT -d "{\"ref\":\"$newrev\"}"
+	    fi
+        else
+	    echo "*** Deleting branch! Will do a full upload if pushed again" >&2
+	    reqbranch DELETE
+        fi
+	;;
+    *)
+        echo "ignoring non-head ref: $refname"
+        ;;
+esac

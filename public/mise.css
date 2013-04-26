@@ -1,0 +1,93 @@
+body {
+  padding: 0.5em;
+  margin: 0.5em;
+  font-family: "Gill Sans MT", sans-serif;
+  color: #323421;
+  background: #f4fbf7;
+}
+.log, .hashes {
+  font-family: "Consolas", "Inconsolata", "Menlo", monospace;
+}
+a:link {
+  color: #176ec4;
+}
+a:visited {
+  color: #446383;
+}
+
+.logo {
+  float: right;
+  vertical-align: top;
+  margin: 0;
+}
+h1, h2 {
+  font-weight: normal;
+}
+h1 {
+  margin: 0 0.5em 0 0;
+}
+nav {
+  margin: 0.25em 1em 1em 0.25em;
+}
+nav a {
+  text-decoration: none;
+}
+footer {
+  margin: 0.5em 0.25em;
+}
+
+.uploads {
+  clear: left;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  border: 1px solid #aaa;
+  margin: 0;
+  padding: 0.25em;
+}
+th {
+  background: #d3f3d3;
+}
+tr.failed {
+  color: #900;
+}
+tr.unapproved {
+  color: #770;
+}
+
+.upload {
+  clear: left;
+  border: 1px solid #777;
+}
+
+.status {
+  padding: 0.5em;
+  background: #bbc;
+  color: #f1fff7;
+  margin: 0;
+}
+.status.done {
+  background: #acb;
+  color: #f1fff7;
+  margin: 0;
+}
+.status.failed {
+  background: #dba;
+}
+.status.unapproved {
+  background: #cca;
+}
+
+.log {
+  padding: 0.5em;
+  margin: 0;
+  background: white;
+  border-top: 1px solid #777;
+  overflow: auto;
+}
+.action {
+  padding: 0.5em;
+  margin: 0;
+}

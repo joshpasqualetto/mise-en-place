@@ -1,0 +1,37 @@
+#!/bin/sh
+
+remote=deploy
+
+while getopts D opt; do
+    case $opt in
+        D) delete=1;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+ask() {
+    printf "$1 (y/n) "
+    read answer
+    case $answer in
+        y|yes) true;;
+        n|no) false;;
+    esac
+}
+
+git fetch -p "$remote"
+for branch; do
+    ahead="$(git rev-list "..$remote/$branch" | grep -c .)"
+    if test "$ahead" -gt 0; then
+        if test -n "$delete"; then
+            echo "Not deleting: $branch is $ahead commit(s) diverged from HEAD"
+        elif ask "Warning! $branch is $ahead commit(s) diverged from HEAD. Force push?"; then
+            git push -f "$remote" "HEAD:$branch"
+        fi
+    else
+        if test -n "$delete" && ask "Warning! You are deleting $branch. Proceed?"; then
+            git push "$remote" ":$branch"
+        else
+            git push "$remote" "HEAD:$branch"
+        fi
+    fi
+done

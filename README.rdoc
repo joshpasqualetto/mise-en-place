@@ -1,0 +1,22 @@
+== Mise En Place
+
+Mise en place is a way to upload your Chef cookbooks, roles, environments, data bags etc. Keep a record of you doing so, offer the chance for someone to 
+review before accepting, and give you diffs so you can see what is actually uploaded
+
+
+Mise En Place is released under the MIT license. Copyright (c) 2011 Sonian Inc
+
+== History
+Mise en place is a tool originally developed internally at Sonian Inc (http://sonian.com) a cloud email archiving company to fullfill its internal needs and was open sourced. The original idea and almost all of the original development was done by Decklin Foster <decklin@red-bean.com> (Replace com with org).
+
+
+== Getting Started
+Copy knife-plugins/up.rb to .chef/plugins/knife/up.rb
+Copy bin/mise-up to somewhere in your $PATH
+
+
+== Database
+
+== TODO
+Make the mise client `knife up` stuff into a gem
+Omnibus this, seriously

@@ -1,0 +1,9 @@
+---
+:db: mysql://username:password@mysql.mydomain.com/mise_en_place
+:public_url: https://git.mydomain.com/
+:github_url: http://github.com/username/repo_name
+:clones_dir: /mnt/mise-en-place/clones
+:repo_dir: /mnt/git/my-chef-repo.git
+:log_dir: /mnt/mise-en-place/log
+:protected_branches:
+  - mybranch1

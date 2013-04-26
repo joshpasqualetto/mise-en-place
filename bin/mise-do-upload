@@ -1,0 +1,213 @@
+#!/usr/bin/env ruby
+
+require 'fileutils'
+require 'optparse'
+require 'rubygems'
+require 'grit'
+require "#{File.dirname(__FILE__)}/../lib/config"
+require "#{File.dirname(__FILE__)}/../lib/models"
+
+class KnifeTestFailed < Exception; end
+class KnifeInternalError < Exception; end
+
+class CloneUploader
+  def initialize(config)
+    @log_dir = config[:log_dir]
+    @repo_dir = config[:repo_dir]
+    # TODO: add cloning to Grit
+    @clone_dir = Dir.mktmpdir('mise-', config[:clones_dir])
+    system 'git', 'clone', '--quiet', @repo_dir, @clone_dir
+    Dir.chdir(@clone_dir)
+    @repo = Grit::Repo.new(@clone_dir)
+  end
+
+  def log(msg)
+    # TODO: nicer logging
+    puts "mise-en-place: #{msg}"
+  end
+
+  def process_upload(ul)
+    ul.status = 'processing'
+    ul.save
+    File.open("#{@log_dir}/#{ul.log_file}", 'w') do |log|
+      STDOUT.reopen(log)
+      STDERR.reopen(log)
+      log "processing upload #{ul.id} in clone #{@clone_dir}"
+      if upload(ul.branch, ul.ref, ul.prev)
+        ul.status = 'done'
+      else
+        ul.status = 'failed'
+      end
+      ul.completed_at = Time.now
+      ul.save
+    end
+    log 'done'
+  end
+
+  def checkout(new_rev)
+    system 'git', 'checkout', '--quiet', new_rev
+    log "checked out #{new_rev}"
+  end
+
+  def upload(branch, new_rev, old_rev)
+    @branch = branch
+    # TODO: Setting this var is a Sonianism. Need to use config to look up both org and env here instead of relying on knife.
+    ENV['ENV'] = @branch
+    begin
+      if old_rev.nil?
+        upload_full(new_rev)
+      else
+        upload_diff(new_rev, old_rev)
+      end
+      log 'upload successfully completed'
+      return true
+    rescue KnifeTestFailed => e
+      log 'test failure'
+    rescue KnifeInternalError => e
+      log "knife internal error: #{e}"
+    rescue Exception => e
+      log "unknown exception: #{e}"
+    end
+    # If we got here, it failed
+    rollback_branch(old_rev)
+    return false
+  end
+
+  def delete
+    FileUtils.rm_rf(@clone_dir)
+  end
+
+  def knife(*args)
+    success = system 'knife', *args
+    raise KnifeInternalError if !success
+  end
+
+  def knife_test(*args)
+    what_to_test = args.shift.to_s
+    passed = system 'knife', what_to_test, 'test', *args
+    raise KnifeTestFailed if !passed
+  end
+
+  def rollback_branch(old_rev)
+    Dir.chdir(@repo_dir)
+    if old_rev.nil?
+      log "deleting branch..."
+      system 'git', 'branch', '-d', @branch
+    else
+      log "rolling #{@branch} back to #{old_rev}..."
+      system 'git', 'update-ref', "refs/heads/#{@branch}", old_rev
+    end
+    Dir.chdir(@clone_dir)
+  end
+
+  # TODO: use Knife libs as a plugin instead of shelling out
+  # A simple uploader would be something like this (unused)
+  def upload_cookbook(c)
+    Chef::CookbookUploader.new(c, "#{@work_dir}/cookbooks").upload_cookbook
+  end
+
+  def upload_full(new_rev)
+    log "full upload"
+    checkout(new_rev)
+
+    knife_test :cookbook, '-a'
+    knife_test :role, '-a'
+    log "all tests passed"
+
+    knife 'cookbook', 'upload', '-a'
+    Dir["roles/*.rb"].sort.each do |path|
+      knife 'role', 'from', 'file', path
+    end
+    Dir.new("#{@repo.working_dir}/data_bags").sort.each do |bag|
+      unless ['.', '..'].include?(bag)
+        knife 'data', 'bag', 'create', bag
+        Dir::glob("#{@repo.working_dir}/data_bags/#{bag}/*.json").each do |path|
+          knife 'data', 'bag', 'from', 'file', bag, path
+        end
+      end
+    end
+  end
+
+  def upload_diff(new_rev, old_rev)
+    log "uploading changes since #{old_rev}"
+    checkout(new_rev)
+
+    # TODO handle branch deletion
+    diff = @repo.diff(old_rev, new_rev)
+    changed = diff.map {|d| d.b_path }.sort.flatten.group_by {|p| p.split('/')[0] }
+
+    if changed['cookbooks'] && changed['cookbooks'].size > 0
+      cookbooks = changed['cookbooks'].map {|p| p.split('/')[1] }.uniq
+      existing = cookbooks.select {|c| File.exists?("cookbooks/#{c}") }
+      deleted = cookbooks.reject {|c| File.exists?("cookbooks/#{c}") }
+
+      knife_test :cookbook, *existing unless existing.empty?
+      log "cookbook tests passed"
+
+      knife 'cookbook', 'upload', *existing if existing.size > 0
+      deleted.each {|c| knife 'cookbook', 'delete', '-ay', c }
+    else
+      log "no cookbooks changed"
+    end
+
+    if changed['roles'] && changed['roles'].size > 0
+      role_names = changed['roles'].select {|p| p.end_with? '.rb' }.map {|p| p.split('/')[1].sub('.rb', '') }
+      existing = role_names.select {|r| File.exists?("roles/#{r}.rb") }
+      deleted = role_names.reject {|r| File.exists?("roles/#{r}.rb") }
+
+      knife_test :role, *existing
+      log "role tests passed"
+
+      existing.each {|r| knife 'role', 'from', 'file', "roles/#{r}.rb" }
+      deleted.each {|r| knife 'role', 'delete', '-y', r }
+    else
+      log "no roles changed"
+    end
+
+    if changed['data_bags'] and changed['data_bags'].size > 0
+      data_bags = changed['data_bags'].map {|p| p.split('/')[1] }.uniq
+      existing_bags = data_bags.select {|b| File.exists?("data_bags/#{b}") }
+      deleted_bags = data_bags.reject {|b| File.exists?("data_bags/#{b}") }
+      existing_bags.each do |bag|
+        # TODO: don't need to create if it already exists, but we'd have to make a request anyway to know it exists...
+        knife 'data', 'bag', 'create', bag
+      end
+      deleted_bags.each do |bag|
+        knife 'data', 'bag', 'delete', '-y', bag
+      end
+      items = changed['data_bags'].map {|p| p.sub(/\.json$/, '').split('/')[1..2] }.reject {|b, i| deleted_bags.include?(b) }
+      existing_items = items.select {|b, i| File.exists?("data_bags/#{b}/#{i}.json") }
+      deleted_items = items.reject {|b, i| File.exists?("data_bags/#{b}/#{i}.json") }
+      existing_items.each do |bag, item|
+        knife 'data', 'bag', 'from', 'file', bag, "data_bags/#{bag}/#{item}.json"
+      end
+      deleted_items.each do |bag, item|
+        knife 'data', 'bag', 'delete', '-y', bag, item
+      end
+    else
+      log "no data bags changed"
+    end
+    #TODO: This doesnt support environments
+  end
+end
+
+config = {}
+upload_id = nil
+
+OptionParser.new do |opts|
+  opts.on('-c', '--config FILE') do |file|
+    config.merge!(MiseConfig.read_config(file))
+  end
+  opts.on('-u', '--upload ID') do |id|
+    upload_id = id
+  end
+end.parse!
+
+DataMapper.setup(:default, config[:db])
+DataMapper.auto_upgrade!
+
+if ul = Upload.get(upload_id)
+  clone = CloneUploader.new(config)
+  clone.process_upload(ul)
+  clone.delete
+end
