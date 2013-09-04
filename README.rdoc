@@ -20,3 +20,6 @@ Copy bin/mise-up to somewhere in your $PATH
 == TODO
 Make the mise client `knife up` stuff into a gem
 Omnibus this, seriously
+
+== License
+  Sensu is released under the MIT License contained in this repo.
